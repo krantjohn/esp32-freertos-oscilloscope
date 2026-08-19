@@ -1,21 +1,28 @@
-# ESP32-S3 FreeRTOS Mini Oscilloscope (简易数字示波器) 📈
+# ESP32-S3 FreeRTOS Mini Oscilloscope (DMA + DSP 高性能示波器) 📈
 
-基于 **ESP32-S3** 与 **FreeRTOS** 实现的双任务、双缓冲简易数字示波器项目。本项目通过硬件定时器精准控制采样率，利用二值信号量实现中断与任务同步，借助双缓冲与队列机制实现零拷贝波形传递与流畅 OLED 刷新。
+基于 **ESP32-S3** 与 **FreeRTOS** 实现的高性能双核数字示波器。本项目升级为 **ESP-IDF ADC DMA 连续硬件采样** 与 **ESP-DSP 硬件加速 FFT 频域分析**，支持多档时基采样率切换、RUN/STOP 冻结及波形/频谱双模式显示。
 
 ---
 
 ## ✨ 核心特性
 
-- **⏱️ 硬件定时器精准采样**：配置 ESP32 硬件定时器（80 分频，计时间隔 100µs），以 **10 kSPS** 稳定频率触发中断，避免软件延迟带来的采样抖动。
-- **🔄 FreeRTOS 双缓冲机制 (Double Buffering)**：采用 `Buffer A / Buffer B` 双缓冲轮换，采样任务与数据消费/渲染任务完全解耦，从根源上杜绝数据竞争与画面撕裂。
-- **⚡ 边沿触发与自动触发 (Edge & Auto Trigger)**：
-  - 支持上升沿电平触发（默认阈值 2048 / 1.65V）；
-  - 配备 50ms 超时自动触发机制（Auto Trigger），在无有效触发信号时依然保持波形流畅刷新。
-- **📊 实时波形参数自动测量**：
-  - 最大电压 $V_{\max}$、最小电压 $V_{\min}$、峰峰值 $V_{\text{pp}}$ 计算；
-  - 基于多周期上升沿跨度平均算法，精准计算波形频率 $F$。
-- **📺 高效 OLED 界面渲染**：基于 `U8g2` 图形库驱动 128×64 SSD1306 OLED 屏幕，实时绘制连续折线波形与底部参数栏。
-- **🧪 内置测试信号源**：利用 ESP32-S3 LEDC 外设在 `GPIO 2` 生成 759Hz 占空比 50% 的 PWM 方波，无需外部信号发生器即可快速自测闭环。
+- **⚡ ADC DMA 连续硬件采样**：
+  - 基于 ESP-IDF 原生 ADC DMA 驱动，彻底摆脱定时器 CPU 中断开销与采样抖动；
+  - 支持多档采样率动态切换（**2 kSPS ~ 80 kSPS**），适应不同频段信号。
+- **🔄 FreeRTOS 双缓冲与多核解耦 (Ping-Pong Buffer)**：
+  - Core 0 独立后台任务高速搬运并解析 DMA 流；
+  - Core 1 主循环负责高精度 DSP 计算与 OLED 400kHz 极速渲染（**40~60 FPS**）。
+- **📊 ESP-DSP 硬件加速 FFT 频域分析**：
+  - 利用 ESP32-S3 Xtensa DSP 指令集进行 128 点加窗（Hann Window）Radix-2 复数快速傅里叶变换；
+  - 动态绘制 64 柱频谱条形图，自动锁定基波与主要谐波 Peak 频率。
+- **🎯 动态自适应施密特触发器**：
+  - 自动根据信号中点与幅值调整触发阈值与迟滞宽度，彻底解决小信号与直流偏置信号跳波问题。
+- **🎮 按键交互与 RUN/STOP 冻结**：
+  - **GPIO 5 (外部按键)**：短按切换 **RUN / STOP** 冻结波形；长按（持续按住达 600ms 即刻触发）切换 **时域波形 <-> FFT 频谱模式**；
+  - **GPIO 4 (外部按键)**：短按循环切换 **多档时基采样率**。
+- **📐 丰富参数测量**：
+  - 频率 $F$、周期 $T$、占空比 $\text{Duty}$、最大电压 $V_{\max}$、最小电压 $V_{\min}$、峰峰值 $V_{\text{pp}}$、直流分量 $V_{\text{avg}}$、真有效值 $V_{\text{rms}}$。
+- **🧪 内置测试信号源**：利用 ESP32-S3 LEDC 硬件外设在 `GPIO 2` 生成 759Hz 信号，方便免外部设备直接自测闭环。
 
 ---
 
@@ -23,94 +30,45 @@
 
 | 引脚功能 | ESP32-S3 引脚 | 说明 |
 | :--- | :--- | :--- |
-| **ADC 采样输入** | `GPIO 1` | 模拟信号输入通道（0 ~ 3.3V） |
-| **测试方波输出** | `GPIO 2` | 内置 759Hz PWM 信号（可直接短接 GPIO 1 自测） |
-| **OLED SDA** | `GPIO 9` | I2C 数据线 |
+| **ADC 采样输入** | `GPIO 1` (ADC1_CH0) | 模拟信号输入通道（0 ~ 3.3V） |
+| **测试信号输出** | `GPIO 2` | 内置 759Hz 硬件信号（短接 GPIO 1 即可自测） |
+| **RUN/STOP / 模式切换** | `GPIO 5` | 外部按键（内部上拉）：短按 RUN/STOP，长按即刻切换 FFT |
+| **时基切换按键** | `GPIO 4` | 外部按键（内部上拉）：切换采样率档位 |
+| **OLED SDA** | `GPIO 9` | I2C 数据线（400kHz 高速） |
 | **OLED SCL** | `GPIO 8` | I2C 时钟线 |
-| **OLED VCC / GND** | `3V3 / GND` | 供电引脚 |
-
-> ⚠️ **注意**：ESP32-S3 ADC 输入电压范围为 0 ~ 3.3V，请勿输入超过 3.3V 的高压信号，以免损坏芯片引脚。
 
 ---
 
-## 🏗️ 软件架构设计
+## 🏗️ 系统架构图
 
 ```mermaid
 flowchart TD
-    subgraph ISR ["硬件定时器中断 (10 kHz)"]
-        Timer[hw_timer_t 中断触发] -->|xSemaphoreGiveFromISR| Sem[二值信号量 sampleSemaphore]
+    subgraph Hardware ["ESP32-S3 硬件层"]
+        ADC_DMA[ADC1 DMA 连续转换 2k~80kSPS] --> FIFO[DMA 环形缓冲区]
+        PWM_OUT[LEDC GPIO 2 759Hz 测试信号]
     end
 
-    subgraph SamplingTask ["FreeRTOS 采样任务 (Priority 5)"]
-        Sem -->|xSemaphoreTake| WaitSem[等待定时触发]
-        WaitSem --> ReadADC[读取 ADC_PIN (GPIO 1)]
-        ReadADC --> TriggerCheck{上升沿触发 / 50ms 超时}
-        TriggerCheck --> FillBuf[填充 128 点到 captureBuffer]
-        FillBuf --> SwapBuf[双缓冲交换 capture / ready]
-        SwapBuf -->|xQueueSend| Queue[波形队列 waveformQueue]
+    subgraph Core0 ["Core 0 (采样与状态机任务)"]
+        FIFO -->|adc_digi_read_bytes| SamplingTask[FreeRTOS 采样任务 Priority 5]
+        SamplingTask --> Schmitt[自适应施密特触发器]
+        Schmitt -->|128 点帧| PingPong[双缓冲 Buffer A / Buffer B]
+        PingPong -->|xQueueOverwrite| Queue[waveformQueue]
     end
 
-    subgraph MainLoop ["主任务 (Core 1)"]
-        Queue -->|xQueueReceive| FetchWave[getWaveform 获取波形指针]
-        FetchWave --> Measure[measureWaveform 计算 Vpp, Vmax, Freq]
-        Measure --> Display[displayWaveform U8g2 绘制波形与参数]
+    subgraph Core1 ["Core 1 (DSP 计算与 UI 渲染)"]
+        Queue -->|getWaveform| MainLoop[主循环 loop]
+        ButtonScan[按键扫描 GPIO 5 / GPIO 4] -->|控制事件| MainLoop
+        MainLoop --> DSP[ESP-DSP 128点 FFT + 特征提取]
+        DSP --> Display[U8g2 OLED 400kHz 快速刷新 40~60 FPS]
     end
 ```
 
 ---
 
-## 📁 代码目录结构
+## 🚀 操作说明
 
-```text
-ADC/
-├── .gitignore              # Git 忽略配置文件
-├── platformio.ini          # PlatformIO 编译环境与依赖配置
-├── README.md               # 项目说明文档
-├── LICENSE                 # MIT 开源协议
-├── include/                # 头文件目录
-└── src/
-    ├── config.h            # 核心参数配置（引脚、采样率、触发电平等）
-    ├── sampling.h/.cpp     # 定时器中断、FreeRTOS 采样任务、双缓冲队列
-    ├── oscilloscope.h/.cpp # 波形特征分析（峰峰值、多周期频率测量）
-    ├── display.h/.cpp      # U8g2 OLED 渲染与 UI 排版
-    └── main.cpp            # 系统入口与主轮询
-```
+1. **短按外部按键 (GPIO 5)**：切换 `RUN`（实时运行）与 `STOP`（画面冻结，方便观察单帧细节）；
+2. **长按外部按键 (GPIO 5 持续按住 >= 600ms)**：无需松手，达到时长**即刻**在 **时域波形模式** 与 **FFT 频谱柱状图模式** 之间一键切换；
+3. **按下 GPIO 4 按键**：循环切换采样率时基：
+   - `80kSPS` -> `40kSPS` -> `20kSPS` -> `10kSPS` -> `5kSPS` -> `2kSPS`。
 
----
-
-## 🚀 快速上手 (Getting Started)
-
-### 1. 软件环境
-- [VS Code](https://code.visualstudio.com/) + [PlatformIO IDE 插件](https://platformio.org/)
-
-### 2. 编译与烧录
-1. 使用 VS Code 打开本项目所在目录 `ADC`；
-2. 确保 `platformio.ini` 配置正确：
-   ```ini
-   [env:esp32-s3-devkitc-1]
-   platform = espressif32
-   board = esp32-s3-devkitc-1
-   framework = arduino
-   lib_deps = 
-       olikraus/U8g2@^2.36.5
-   ```
-3. 连接 ESP32-S3 开发板，点击 PlatformIO 状态栏的 **Build** (✓) 与 **Upload** (→) 进行编译并烧录。
-
-### 3. 自测验证
-- 用杜邦线将 **`GPIO 2`**（测试方波输出）连接到 **`GPIO 1`**（ADC 采样输入）；
-- OLED 屏幕将清晰显示 759Hz 方波，底部参数实时显示 `F:759Hz Vpp:3.30 Vmax:3.30V`。
-
----
-
-## 🔮 后续规划 (Roadmap)
-
-- [ ] **DMA 连续采样**：升级至 ESP-IDF ADC Continuous (DMA) 驱动，采样率提升至 100kSPS+。
-- [ ] **交互控制**：增加按键/旋钮编码器，支持时基调节、垂直灵敏度调节与触发模式（Auto/Normal/Single）切换。
-- [ ] **频域分析**：引入 ESP-DSP FFT 算法，支持时域/频域频谱一键切换。
-- [ ] **多通道采集**：支持双通道（CH1 / CH2）同步采集与李萨如图形显示。
-
----
-
-## 📄 开源协议
-
-本项目采用 [MIT License](LICENSE) 开源。
