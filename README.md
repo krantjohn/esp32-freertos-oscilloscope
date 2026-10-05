@@ -1,5 +1,14 @@
 # ESP32-S3 FreeRTOS Mini Oscilloscope (DMA + DSP 高性能示波器) 📈
 
+<p align="center">
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/Language-English-blue?style=flat-square" alt="English Documentation"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/语言-简体中文-red?style=flat-square" alt="中文文档"></a>
+  <a href="https://www.espressif.com/en/products/socs/esp32-s3"><img src="https://img.shields.io/badge/SoC-ESP32--S3-E7352C?logo=espressif&logoColor=white&style=flat-square" alt="ESP32-S3"></a>
+  <a href="https://www.freertos.org/"><img src="https://img.shields.io/badge/RTOS-FreeRTOS-brightgreen?style=flat-square" alt="FreeRTOS"></a>
+  <a href="https://platformio.org/"><img src="https://img.shields.io/badge/PlatformIO-Compatible-orange?logo=platformio&logoColor=white&style=flat-square" alt="PlatformIO"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
+</p>
+
 基于 **ESP32-S3** 与 **FreeRTOS** 实现的高性能双核数字示波器。本项目升级为 **ESP-IDF ADC DMA 连续硬件采样** 与 **ESP-DSP 硬件加速 FFT 频域分析**，支持多档时基采样率切换、RUN/STOP 冻结及波形/频谱双模式显示。
 
 ---
@@ -72,3 +81,29 @@ flowchart TD
 3. **按下 GPIO 4 按键**：循环切换采样率时基：
    - `80kSPS` -> `40kSPS` -> `20kSPS` -> `10kSPS` -> `5kSPS` -> `2kSPS`。
 
+---
+
+## 💻 快速编译与烧录 (PlatformIO)
+
+本项目基于标准的 [PlatformIO](https://platformio.org/) 工程构建：
+
+1. **安装环境**：推荐使用 VS Code 配合安装 **PlatformIO IDE** 插件；
+2. **克隆项目**：
+   ```bash
+   git clone https://github.com/krantjohn/esp32-freertos-oscilloscope.git
+   cd esp32-freertos-oscilloscope
+   ```
+3. **编译并上传固件**：
+   ```bash
+   # 一键编译并烧录至 ESP32-S3
+   pio run -t upload
+
+   # 打开串口监视器
+   pio device monitor
+   ```
+
+---
+
+## 📄 开源许可
+
+本项目采用 [MIT License](LICENSE) 开源许可。
